@@ -1,7 +1,7 @@
 {
   "name": "daily-summary",
-  "version": "1.0.0",
-  "description": "AI 工作日志助理 - 渐进式总结当日对话，生成知识沉淀与导师建议",
+  "version": "1.1.0",
+  "description": "AI 工作日志助理 - 自动总结当日对话，生成知识沉淀与导师建议",
   "author": {
     "name": "Eason"
   },

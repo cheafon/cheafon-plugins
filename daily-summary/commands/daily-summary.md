@@ -2,7 +2,7 @@
 name: daily-summary
 description: 生成当日工作总结，包含知识沉淀与导师建议
 argument-hint: "[引导方向，如：重点关注 TypeScript]"
-allowed-tools: ["Read", "Write", "Bash", "Glob", "Grep", "Task"]
+allowed-tools: ["Read", "Bash", "Task"]
 ---
 
 # Daily Summary 命令
@@ -11,165 +11,138 @@ allowed-tools: ["Read", "Write", "Bash", "Glob", "Grep", "Task"]
 
 ## 执行流程
 
-### 1. 检查配置
+你必须按顺序执行以下步骤。每一步都要实际调用工具，不要跳过。
 
-首先检查配置文件是否存在：
+### Step 1: 读取配置
 
-```bash
-cat ~/.claude/daily-summary.local.md
+使用 Read 工具读取配置文件：
+
+```
+Read: ~/.claude/daily-summary.local.md
 ```
 
-如果配置文件不存在，提示用户：
+配置文件格式：
+```yaml
+---
+git_repo: ~/path/to/worklogs
+git_remote: origin
+git_branch: main
+---
+```
 
-> ⚠️ 未找到 Git 仓库配置。请先运行以下命令进行配置：
->
-> ```bash
-> bash ${CLAUDE_PLUGIN_ROOT}/scripts/setup-git.sh
+**如果配置文件不存在**，告诉用户需要先创建配置：
+
+> 请创建配置文件 `~/.claude/daily-summary.local.md`：
+> ```yaml
+> ---
+> git_repo: ~/worklogs
+> git_remote: origin
+> git_branch: main
+> ---
 > ```
 
-然后停止执行，等待用户完成配置。
+然后停止执行。
 
-### 2. 检查已有总结（增量更新）
+### Step 2: 准备参数
 
-从配置文件解析仓库路径，检查是否已有今日总结：
+从配置中提取：
+- `GIT_REPO`: git_repo 的值（展开 `~` 为完整路径）
+- `GIT_REMOTE`: git_remote 的值（默认 `origin`）
+- `GIT_BRANCH`: git_branch 的值（默认 `main`）
+
+计算日期和目标文件：
+- `TODAY`: 今天的日期 (YYYY-MM-DD 格式)
+- `TARGET_FILE`: `$GIT_REPO/$TODAY.md`
+
+### Step 3: 检查已有总结
+
+使用 Read 工具检查 `TARGET_FILE` 是否存在：
+
+```
+Read: $TARGET_FILE
+```
+
+- 如果文件存在，记录内容作为 `EXISTING_CONTENT`（增量更新模式）
+- 如果文件不存在，`EXISTING_CONTENT` 为空（新建模式）
+
+### Step 4: 调用 Agent 生成总结
+
+使用 Task 工具调用 `summary-generator` agent。
+
+**Prompt 模板**（将变量替换为实际值）：
+
+```
+请生成今日工作总结。
+
+## 参数
+
+- target_file: [TARGET_FILE 的完整路径]
+- target_date: [TODAY]
+- existing_content: [EXISTING_CONTENT 或 "无"]
+- guidance: [用户提供的引导参数，或 "无特定引导"]
+
+## 要求
+
+1. 使用 Glob 查找 ~/.claude/projects/**/*.jsonl
+2. 使用 Read 读取 JSONL 文件，筛选今天的对话
+3. 生成总结内容
+4. **使用 Write 工具写入 target_file**
+
+完成后确认文件已写入。
+```
+
+等待 agent 完成。
+
+### Step 5: Git 提交和推送
+
+Agent 完成后，使用 Bash 工具执行 git 操作：
 
 ```bash
-# 解析配置获取仓库路径
-GIT_REPO=$(grep "^git_repo:" ~/.claude/daily-summary.local.md | sed 's/^git_repo:[[:space:]]*//' | sed "s|~|$HOME|")
-
-# 检查今日文件是否存在
-TODAY=$(date +%Y-%m-%d)
-EXISTING_FILE="$GIT_REPO/$TODAY.md"
-
-if [ -f "$EXISTING_FILE" ]; then
-    echo "发现已有今日总结，将进行增量更新"
-    cat "$EXISTING_FILE"  # 读取已有内容
-fi
+cd $GIT_REPO && \
+git add $TODAY.md && \
+git diff --cached --quiet || git commit -m "docs: 工作日志 $TODAY" && \
+git push $GIT_REMOTE $GIT_BRANCH
 ```
 
-如果已有总结：
-- 读取已有内容，传递给 agent 进行**智能增量更新**
-- agent 会合并新旧内容，避免重复，保持结构完整
+说明：
+- `git diff --cached --quiet` 检查是否有变更
+- 如果有变更才执行 commit
+- 自动推送到远程
 
-如果没有已有总结：
-- 正常生成新的总结
+### Step 6: 报告结果
 
-### 3. 解析对话记录
+输出执行结果：
 
-运行解析脚本获取当天的对话数据：
+**成功时**：
+```
+✅ 每日总结完成
 
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/parse-conversations.py
+| 项目     | 状态                   |
+|----------|------------------------|
+| 总结生成 | ✓ 成功                 |
+| Git 提交 | ✓ 已提交               |
+| Git 推送 | ✓ 已推送到 $GIT_REMOTE/$GIT_BRANCH |
+
+文件路径: $TARGET_FILE
 ```
 
-脚本输出 JSON 格式的对话数据。
+**失败时**：
+报告具体哪一步失败，以及错误信息。
 
-### 4. 检查数据量
-
-查看解析结果：
-- 如果 `total_summaries` 和 `total_conversations` 都为 0，提示用户今天没有对话记录
-- 如果数据量过大（conversations > 100），考虑分批处理
-
-### 5. 调用 summary-generator Agent
-
-使用 Task 工具调用 `summary-generator` agent：
-
-**Prompt 模板（新建模式）**：
-
-```
-请根据以下对话数据生成今日工作总结。
-
-## 对话数据
-
-{conversations_data_json}
-
-## 引导方向
-
-{如果用户提供了引导参数，在这里说明；否则写"无特定引导，全面总结"}
-
-## 输出要求
-
-1. 按照 agent 的输出格式生成 Markdown
-2. 将结果写入 /tmp/daily-summary/YYYY-MM-DD.md（使用今天的日期）
-3. 确保目录存在：mkdir -p /tmp/daily-summary
-```
-
-**Prompt 模板（增量更新模式）**：
-
-```
-请对今日工作总结进行增量更新。
-
-## 已有总结内容
-
-{existing_summary_content}
-
-## 新增对话数据
-
-{conversations_data_json}
-
-## 引导方向
-
-{如果用户提供了引导参数，在这里说明；否则写"无特定引导，全面总结"}
-
-## 更新要求
-
-1. **智能合并**：将新内容与已有内容合并，避免重复
-2. **保持结构**：保持 Markdown 结构不变
-3. **累积知识**：新学到的知识追加到对应章节
-4. **更新导师点评**：根据全天工作重新生成导师点评和下一步行动
-5. 将结果写入 /tmp/daily-summary/YYYY-MM-DD.md（覆盖）
-```
-
-### 6. 提交到 Git
-
-总结生成后，运行提交脚本：
-
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh /tmp/daily-summary/YYYY-MM-DD.md
-```
-
-### 7. 清理并报告
-
-- 显示生成的总结内容（或摘要）
-- 报告提交状态
-- 可选：清理临时文件
-
-## 参数处理
+## 参数说明
 
 - **无参数**：全面总结当天所有对话
-- **有参数**：作为引导方向传递给 agent，聚焦总结
+- **有参数**：作为引导方向，聚焦特定主题
 
 示例：
 - `/daily-summary` → 全面总结
 - `/daily-summary TypeScript 类型系统` → 聚焦 TypeScript 相关内容
-- `/daily-summary 今天遇到的 bug` → 聚焦问题与解决
 
 ## 错误处理
 
 | 情况 | 处理方式 |
 |------|---------|
-| 配置文件不存在 | 提示运行 setup-git.sh |
-| 无对话记录 | 提示今天没有对话，无需总结 |
-| Git 推送失败 | 显示错误，建议检查网络或权限 |
+| 配置文件不存在 | 提示创建配置文件 |
+| 无对话记录 | 提示今天没有对话 |
 | Agent 执行失败 | 显示错误，建议重试 |
-
-## 输出示例
-
-```
-✅ 配置检查通过
-📖 正在解析对话记录...
-   - 发现 5 个项目的对话
-   - 共 23 条摘要，47 条对话
-
-🤖 正在生成总结...
-   [调用 summary-generator agent]
-
-📝 总结已生成: /tmp/daily-summary/2025-12-24.md
-
-📤 正在提交到 Git...
-   - 仓库: ~/worklogs
-   - 分支: main
-   ✅ 推送成功!
-
-🎉 完成！今日总结已保存。
-```
+| Git 推送失败 | 显示错误，建议检查网络 |
