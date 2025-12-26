@@ -1,165 +1,86 @@
-# Daily Summary - AI 每日工作总结助理
+# Daily Summary 每日对话总结
 
-一个 Claude Code 插件，自动总结当日对话记录，生成包含知识沉淀与导师建议的高质量工作总结。
+自动读取当天 Claude Code 对话记录，生成双视角总结并自动提交到 Git 仓库。
 
-## 功能特点
+## 目录结构
+DEV-MARK:这个文件夹
 
-- **自动读取对话** - 直接从 `~/.claude/projects` 读取 JSONL 对话文件
-- **双视角输出** - 智能助理（回顾）+ 成长导师（前瞻）
-- **知识导向** - 按知识主题组织，而非机械地按项目/时间分类
-- **增量更新** - 支持一天内多次运行，智能合并内容
-- **Git 集成** - 自动提交并推送到配置的 Git 仓库
+## 功能
 
-## 安装
+- **智能读取**：自动扫描 `~/.claude/projects`（可以自定义，我的是linux系统，默认的目录就是这个） 下当天的所有对话
+- **双视角总结**：
+  - 助理视角：学到的知识、遇到的问题、解决方法（按主题分类）
+  - 导师视角：后续指导建议、重点关注事项
+- **增量更新**：如果当天已有总结，智能合并新内容
+- **自动提交**：写入完成后自动 commit 并 push 到远程仓库
 
-插件已包含在 `cheafon-plugins` marketplace 中，启用后自动可用。
+## 配置
 
-## 首次使用
-
-### 1. 创建配置文件
-
-创建 `~/.claude/daily-summary.local.md`：
-
-```yaml
----
-git_repo: ~/worklogs
-git_remote: origin
-git_branch: main
----
-
-# Daily Summary 配置
-
-工作总结仓库配置。
-```
-
-### 2. 准备 Git 仓库
-
-确保 `git_repo` 指向的目录是一个已初始化的 Git 仓库：
+在插件目录下创建 `config.local.md` 配置文件：
 
 ```bash
-mkdir -p ~/worklogs
-cd ~/worklogs
-git init
-git remote add origin <your-remote-url>
+# 复制模板
+cp config.local.md.example config.local.md
+
+# 编辑配置
+vim config.local.md
 ```
 
-### 3. 使用命令
-
+配置内容：
+```markdown
+---
+conversation_dir: ~/.claude/projects  这个是你的claude的对话日志文件夹，linux默认是在`~/.claude/projects`
+output_repo: ~/project/daily-summaries  你的保存日志的仓库，目前的逻辑是把总结报告直接提交到本地的仓库然后push，所以你需要有一个已经配置了remote的本地仓库，只需要提供这个目录即可
+---
 ```
-/daily-summary                        # 全面总结当天对话
-/daily-summary TypeScript 类型系统    # 聚焦特定主题
-/daily-summary 今天遇到的 bug         # 聚焦问题与解决
+
+> 注意：`config.local.md` 已在 `.gitignore` 中忽略，不会被提交到 git
+
+### 配置项说明
+
+| 字段 | 说明 | 默认值 |
+|------|------|--------|
+| `conversation_dir` | Claude 对话存储目录 | `~/.claude/projects` |
+| `output_repo` | 总结文档输出的 Git 仓库目录 | 必填 |
+
+## 使用方法
+
+```bash
+# 在任意项目中执行
+/daily-summary
 ```
 
 ## 输出格式
 
+生成的文件命名：`daily-summary-YYYY-MM-DD.md`
+
 ```markdown
-# 每日总结 - 2025-12-25
+# 每日总结 - YYYY-MM-DD
 
-> 一句话总结今天的主题/收获
+## 助理视角
 
-## 今日学习收获
-### [主题1]
-- 要点描述
-- 关键代码/命令示例
+### 主题一：xxx
+- 学到的知识点
+- 遇到的问题
+- 解决方法
 
-## 问题与解决
-### [问题简述]
-- **问题**：具体描述
-- **解决**：解决方案
-- **启发**：从中学到什么
+### 主题二：xxx
+...
 
-## 关键洞察
-- 值得长期记住的知识点或最佳实践
+## 导师视角
 
-## 导师点评
-对今天工作的整体评价，语气鼓励但客观
+### 后续指导
+- 建议 1
+- 建议 2
 
-## 下一步行动
-1. 具体可执行的下一步任务
-2. 需要深入学习的领域
+### 重点关注
+- 关注点 1
+- 关注点 2
 ```
 
-## 目录结构
+## 安装
 
-```
-daily-summary/
-├── .claude-plugin/
-│   └── plugin.json           # 插件清单
-├── commands/
-│   └── daily-summary.md      # 主命令
-├── agents/
-│   └── summary-generator.md  # 总结生成 Agent
-└── README.md
-```
-
-## 配置说明
-
-配置存储在 `~/.claude/daily-summary.local.md`：
-
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `git_repo` | 工作日志 Git 仓库路径 | 必填 |
-| `git_remote` | Git 远程名称 | `origin` |
-| `git_branch` | Git 分支名称 | `main` |
-
-## 工作原理
-
-```
-/daily-summary [引导]
-       │
-       ▼
-Command: 读取配置 (~/.claude/daily-summary.local.md)
-       │
-       ▼
-Command: 检查已有总结（增量更新模式）
-       │
-       ▼
-Task: 调用 summary-generator agent
-       │
-       ▼
-Agent: Glob 查找 ~/.claude/projects/**/*.jsonl
-Agent: Read 读取对话内容
-Agent: 生成总结
-Agent: Write 写入目标文件
-       │
-       ▼
-Command: Bash 执行 git add/commit/push
-       │
-       ▼
-完成
-```
-
-## 常见问题
-
-### Q: 提示"配置文件不存在"？
-创建 `~/.claude/daily-summary.local.md` 配置文件，参考上方配置说明。
-
-### Q: Git 每次都要输入密码？
-配置 credential helper：
 ```bash
-git config --global credential.helper store
+# 添加到 Claude Code 插件目录
+claude plugin install cheafon-plugins/daily-summary
 ```
-
-### Q: 如何修改 Git 仓库配置？
-直接编辑 `~/.claude/daily-summary.local.md`。
-
-### Q: 一天运行多次会重复吗？
-不会。插件支持增量更新，会智能合并已有内容，避免重复。
-
-## 版本历史
-
-- **1.1.0** - 重构版本
-  - 移除外部脚本依赖
-  - Claude 直接读取 JSONL 文件
-  - Agent 直接写入目标仓库
-  - 简化工作流程
-
-- **1.0.0** - 初始版本
-  - `/daily-summary` 命令
-  - 渐进式总结 Agent
-  - Git 自动提交
-
-## 许可证
-
-MIT

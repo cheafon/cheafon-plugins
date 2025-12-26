@@ -1,9 +1,9 @@
 {
   "name": "daily-summary",
-  "version": "1.1.0",
-  "description": "AI 工作日志助理 - 自动总结当日对话，生成知识沉淀与导师建议",
+  "version": "1.0.0",
+  "description": "每日对话总结插件：自动读取当天 Claude 对话记录，生成双视角总结（助理+导师），支持增量更新并自动提交到 Git 仓库",
   "author": {
-    "name": "Eason"
-  },
-  "keywords": ["worklog", "summary", "productivity", "learning", "mentor"]
+    "name": "Cheafon",
+    "email": "cheafon@example.com"
+  }
 }

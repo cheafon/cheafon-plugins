@@ -1,0 +1,12 @@
+---
+conversation_dir: ~/.claude/projects  这个是你的claude的对话日志文件夹，linux默认是在`~/.claude/projects`
+output_repo: ~/project/daily-summaries  你的保存日志的仓库，目前的逻辑是把总结报告直接提交到本地的仓库然后push，所以你需要有一个已经配置了remote的本地仓库，只需要提供这个目录即可
+---
+
+# Daily Summary 配置说明
+
+复制此文件为 `config.local.md` 并修改配置：
+
+```bash
+cp config.local.md.example config.local.md
+```
